@@ -514,6 +514,23 @@ elif st.session_state.opcion == "Calculadora Regresion Linear":
             border-radius:10px;
             padding:6px;
         }
+
+        .explicacion-box{
+            background:var(--card);
+            border-left:4px solid var(--primary);
+            padding:20px;
+            border-radius:12px;
+            margin:20px 0;
+        }
+
+        .metric-destacado{
+            background:linear-gradient(135deg, var(--primary), var(--accent));
+            padding:15px;
+            border-radius:10px;
+            text-align:center;
+            font-size:1.2em;
+            font-weight:bold;
+        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -610,29 +627,232 @@ elif st.session_state.opcion == "Calculadora Regresion Linear":
                     modelo = LinearRegression()
                     modelo.fit(X_train, y_train)
 
-                    st.success("Modelo entrenado correctamente")
+                    st.success("✅ Modelo entrenado correctamente")
 
-                    coef_df = pd.DataFrame({
-                        "Característica": columnas_caracteristicas,
-                        "Coeficiente": modelo.coef_
-                    }).sort_values("Coeficiente", key=np.abs, ascending=False)
+                    # Predicciones
+                    y_pred_train = modelo.predict(X_train)
+                    y_pred_test = modelo.predict(X_test)
 
-                    fig_coef = px.bar(
-                        coef_df,
-                        x="Coeficiente",
-                        y="Característica",
-                        orientation="h",
-                        color="Coeficiente",
-                        color_continuous_scale=["#38bdf8","#a78bfa","#f43f5e"],
-                        template="plotly_dark"
-                    )
-                    st.plotly_chart(fig_coef, use_container_width=True)
+                    # Métricas
+                    r2_train = r2_score(y_train, y_pred_train)
+                    r2_test = r2_score(y_test, y_pred_test)
+                    rmse_train = np.sqrt(mean_squared_error(y_train, y_pred_train))
+                    rmse_test = np.sqrt(mean_squared_error(y_test, y_pred_test))
+                    mae_test = np.mean(np.abs(y_test - y_pred_test))
 
-                    y_pred = modelo.predict(X_test)
-                    st.metric("R²", f"{r2_score(y_test, y_pred):.4f}")
-                    st.metric("RMSE", f"{np.sqrt(mean_squared_error(y_test, y_pred)):.4f}")
+                    # Mostrar métricas principales
+                    with ui.card(key="metricas_principales"):
+                        st.markdown("#### 📈 Métricas del Modelo")
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("R² (Test)", f"{r2_test:.4f}")
+                        with col2:
+                            st.metric("R² (Train)", f"{r2_train:.4f}")
+                        with col3:
+                            st.metric("RMSE (Test)", f"{rmse_test:.4f}")
+                        with col4:
+                            st.metric("MAE (Test)", f"{mae_test:.4f}")
+
+                    # Gráfico de coeficientes
+                    with ui.card(key="coeficientes"):
+                        st.markdown("#### 🎯 Importancia de las Características")
+                        coef_df = pd.DataFrame({
+                            "Característica": columnas_caracteristicas,
+                            "Coeficiente": modelo.coef_
+                        }).sort_values("Coeficiente", key=np.abs, ascending=False)
+
+                        fig_coef = px.bar(
+                            coef_df,
+                            x="Coeficiente",
+                            y="Característica",
+                            orientation="h",
+                            color="Coeficiente",
+                            color_continuous_scale=["#38bdf8","#a78bfa","#f43f5e"],
+                            template="plotly_dark",
+                            title="Coeficientes de Regresión"
+                        )
+                        fig_coef.update_layout(height=400)
+                        st.plotly_chart(fig_coef, use_container_width=True)
+
+                    # GRÁFICO DE LA RECTA DE REGRESIÓN
+                    with ui.card(key="recta_regresion"):
+                        st.markdown("#### 📉 Recta de Regresión - Valores Reales vs Predichos")
+                        
+                        # Crear DataFrame para el gráfico
+                        df_plot = pd.DataFrame({
+                            'Real': y_test,
+                            'Predicho': y_pred_test
+                        })
+                        
+                        # Crear figura con scatter plot
+                        fig_regression = go.Figure()
+                        
+                        # Puntos reales vs predichos
+                        fig_regression.add_trace(go.Scatter(
+                            x=y_test,
+                            y=y_pred_test,
+                            mode='markers',
+                            name='Predicciones',
+                            marker=dict(
+                                size=8,
+                                color=y_pred_test,
+                                colorscale='Viridis',
+                                showscale=True,
+                                colorbar=dict(title="Valor Predicho"),
+                                line=dict(width=1, color='white')
+                            ),
+                            text=[f'Real: {r:.2f}<br>Pred: {p:.2f}<br>Error: {abs(r-p):.2f}' 
+                                  for r, p in zip(y_test, y_pred_test)],
+                            hovertemplate='<b>%{text}</b><extra></extra>'
+                        ))
+                        
+                        # Línea de regresión perfecta (diagonal)
+                        min_val = min(y_test.min(), y_pred_test.min())
+                        max_val = max(y_test.max(), y_pred_test.max())
+                        fig_regression.add_trace(go.Scatter(
+                            x=[min_val, max_val],
+                            y=[min_val, max_val],
+                            mode='lines',
+                            name='Predicción Perfecta',
+                            line=dict(color='#f43f5e', width=3, dash='dash')
+                        ))
+                        
+                        # Línea de tendencia (regresión de las predicciones)
+                        z = np.polyfit(y_test, y_pred_test, 1)
+                        p = np.poly1d(z)
+                        fig_regression.add_trace(go.Scatter(
+                            x=sorted(y_test),
+                            y=p(sorted(y_test)),
+                            mode='lines',
+                            name=f'Tendencia (y={z[0]:.3f}x+{z[1]:.3f})',
+                            line=dict(color='#38bdf8', width=2)
+                        ))
+                        
+                        fig_regression.update_layout(
+                            template='plotly_dark',
+                            height=500,
+                            xaxis_title='Valores Reales',
+                            yaxis_title='Valores Predichos',
+                            hovermode='closest',
+                            showlegend=True,
+                            legend=dict(
+                                yanchor="top",
+                                y=0.99,
+                                xanchor="left",
+                                x=0.01,
+                                bgcolor="rgba(0,0,0,0.5)"
+                            )
+                        )
+                        
+                        st.plotly_chart(fig_regression, use_container_width=True)
+
+                    # EXPLICACIÓN DETALLADA DEL GRÁFICO
+                    with ui.card(key="explicacion_grafico"):
+                        st.markdown("#### 📚 Interpretación del Gráfico y Métricas")
+                        
+                        st.markdown(f"""
+                        <div class="explicacion-box">
+                        <h4>🎯 ¿Qué muestra este gráfico?</h4>
+                        <p>Este gráfico compara los <b>valores reales</b> (eje X) con los <b>valores predichos por el modelo</b> (eje Y). 
+                        Cada punto representa una observación del conjunto de prueba.</p>
+                        
+                        <h4>📏 Elementos del Gráfico:</h4>
+                        <ul>
+                            <li><b>Puntos de colores:</b> Cada punto es una predicción. Mientras más cerca esté de la línea roja discontinua, mejor es la predicción.</li>
+                            <li><b>Línea roja discontinua (y=x):</b> Representa la predicción perfecta. Si todos los puntos estuvieran en esta línea, el modelo sería perfecto.</li>
+                            <li><b>Línea azul continua:</b> Es la línea de tendencia de tus predicciones. Muestra la relación general entre valores reales y predichos.</li>
+                        </ul>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Análisis de las métricas
+                        st.markdown(f"""
+                        <div class="explicacion-box">
+                        <h4>📊 Análisis de tus Métricas:</h4>
+                        
+                        <p><b>🎯 R² (Coeficiente de Determinación) = {r2_test:.4f}</b></p>
+                        <ul>
+                            <li>Indica qué porcentaje de la variabilidad de los datos es explicado por el modelo.</li>
+                            <li><b>Tu modelo explica el {r2_test*100:.2f}% de la variación</b> en {variable_objetivo}.</li>
+                            <li>Interpretación: {'🟢 Excelente' if r2_test > 0.9 else '🟡 Bueno' if r2_test > 0.7 else '🟠 Aceptable' if r2_test > 0.5 else '🔴 Necesita mejorar'}</li>
+                        </ul>
+                        
+                        <p><b>📏 RMSE (Error Cuadrático Medio) = {rmse_test:.4f}</b></p>
+                        <ul>
+                            <li>Es el promedio de las diferencias entre valores reales y predichos.</li>
+                            <li><b>En promedio, tus predicciones se desvían ±{rmse_test:.2f} unidades</b> del valor real.</li>
+                            <li>Mientras más bajo, mejor es el modelo.</li>
+                        </ul>
+                        
+                        <p><b>📐 MAE (Error Absoluto Medio) = {mae_test:.4f}</b></p>
+                        <ul>
+                            <li>El error promedio absoluto de tus predicciones.</li>
+                            <li><b>Tus predicciones tienen un error promedio de {mae_test:.2f} unidades.</b></li>
+                        </ul>
+                        
+                        <p><b>🔍 Diferencia Train vs Test:</b></p>
+                        <ul>
+                            <li>R² Train: {r2_train:.4f} | R² Test: {r2_test:.4f}</li>
+                            <li>Diferencia: {abs(r2_train - r2_test):.4f}</li>
+                            <li>{'🟢 Modelo bien generalizado' if abs(r2_train - r2_test) < 0.1 else '🟡 Posible sobreajuste' if r2_train > r2_test + 0.1 else '🟠 Revisar modelo'}</li>
+                        </ul>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Ecuación del modelo
+                        st.markdown("#### 🧮 Ecuación del Modelo")
+                        ecuacion = f"{variable_objetivo} = {modelo.intercept_:.4f}"
+                        for i, feat in enumerate(columnas_caracteristicas):
+                            coef = modelo.coef_[i]
+                            ecuacion += f" + ({coef:.4f} × {feat})"
+                        
+                        st.code(ecuacion, language="text")
+                        
+                        st.markdown(f"""
+                        <div class="explicacion-box">
+                        <h4>💡 Recomendaciones:</h4>
+                        <ul>
+                            <li>{'✅ Tu modelo tiene buen rendimiento.' if r2_test > 0.7 else '⚠️ Considera agregar más características o usar otro algoritmo.'}</li>
+                            <li>{'✅ No hay sobreajuste significativo.' if abs(r2_train - r2_test) < 0.1 else '⚠️ Hay sobreajuste, considera regularización o más datos.'}</li>
+                            <li>Los coeficientes más altos (en valor absoluto) son las características más influyentes.</li>
+                        </ul>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # Gráfico de residuos
+                    with ui.card(key="residuos"):
+                        st.markdown("#### 📊 Análisis de Residuos")
+                        residuos = y_test - y_pred_test
+                        
+                        fig_residuos = go.Figure()
+                        fig_residuos.add_trace(go.Scatter(
+                            x=y_pred_test,
+                            y=residuos,
+                            mode='markers',
+                            marker=dict(
+                                size=8,
+                                color=residuos,
+                                colorscale='RdYlGn_r',
+                                showscale=True,
+                                colorbar=dict(title="Residuo")
+                            ),
+                            name='Residuos'
+                        ))
+                        
+                        fig_residuos.add_hline(y=0, line_dash="dash", line_color="red")
+                        fig_residuos.update_layout(
+                            template='plotly_dark',
+                            height=400,
+                            xaxis_title='Valores Predichos',
+                            yaxis_title='Residuos',
+                            title='Residuos vs Valores Predichos'
+                        )
+                        
+                        st.plotly_chart(fig_residuos, use_container_width=True)
+                        
+                        st.info("ℹ️ Los residuos deberían distribuirse aleatoriamente alrededor de cero. Un patrón sistemático indica problemas en el modelo.")
 
         except Exception as e:
-            st.error(str(e))
+            st.error(f"❌ Error: {str(e)}")
     else:
-        st.info("Carga un archivo para comenzar")
+        st.info("📁 Carga un archivo CSV o Excel para comenzar el análisis")
